@@ -248,17 +248,41 @@ func (t telegram) call(method string, payload any, result any) error {
 }
 func (t telegram) send(chatID int64, message string) error {
 	for _, part := range chunks(message, 4000) {
-		if err := t.call("sendMessage", map[string]any{"chat_id": chatID, "text": part, "disable_notification": true, "reply_markup": map[string]bool{"remove_keyboard": true}}, nil); err != nil {
+		keyboard := map[string]any{"keyboard": [][]map[string]string{{{"text": joinButton}}}, "resize_keyboard": true}
+		if err := t.call("sendMessage", map[string]any{"chat_id": chatID, "text": part, "disable_notification": true, "reply_markup": keyboard}, nil); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+const joinButton = "👋 Сейчас зайду"
+
+type telegramUser struct {
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Username  string `json:"username"`
+}
+
+func joinAnnouncement(user *telegramUser) string {
+	name := ""
+	if user != nil {
+		name = strings.TrimSpace(clean(user.FirstName) + " " + clean(user.LastName))
+		if name == "" && clean(user.Username) != "" {
+			name = "@" + clean(user.Username)
+		}
+	}
+	if name == "" {
+		name = "Пользователь"
+	}
+	return "👋 " + name + " скоро зайдёт в TeamSpeak!"
+}
+
 type update struct {
 	ID      int64 `json:"update_id"`
 	Message *struct {
-		Text string `json:"text"`
+		Text string        `json:"text"`
+		From *telegramUser `json:"from"`
 		Chat struct {
 			ID int64 `json:"id"`
 		} `json:"chat"`
@@ -312,6 +336,12 @@ func main() {
 			}
 			id := u.Message.Chat.ID
 			if len(c.allowed) > 0 && !c.allowed[id] {
+				continue
+			}
+			if strings.TrimSpace(u.Message.Text) == joinButton {
+				if err := tg.send(id, joinAnnouncement(u.Message.From)); err != nil {
+					log.Print(err)
+				}
 				continue
 			}
 			fields := strings.Fields(u.Message.Text)

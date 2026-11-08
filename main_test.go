@@ -1,11 +1,45 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 )
+
+func TestJoinAnnouncement(t *testing.T) {
+	if got := joinAnnouncement(&telegramUser{FirstName: "Иван\n", LastName: "Иванов"}); got != "👋 Иван Иванов скоро зайдёт в TeamSpeak!" {
+		t.Fatal(got)
+	}
+	if got := joinAnnouncement(nil); !strings.Contains(got, "Пользователь") {
+		t.Fatal(got)
+	}
+}
+
+func TestSendIncludesSilentJoinKeyboard(t *testing.T) {
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		var payload struct {
+			ChatID int64 `json:"chat_id"`
+			Silent bool  `json:"disable_notification"`
+			Markup struct {
+				Keyboard [][]struct {
+					Text string `json:"text"`
+				} `json:"keyboard"`
+			} `json:"reply_markup"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.ChatID != 42 || !payload.Silent || len(payload.Markup.Keyboard) != 1 || len(payload.Markup.Keyboard[0]) != 1 || payload.Markup.Keyboard[0][0].Text != joinButton {
+			t.Fatalf("unexpected payload: %+v", payload)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`)), Header: make(http.Header)}, nil
+	})}
+	if err := (telegram{token: "test", http: httpClient}).send(42, "готово"); err != nil {
+		t.Fatal(err)
+	}
+}
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
