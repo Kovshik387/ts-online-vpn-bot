@@ -8,12 +8,22 @@ import (
 	"testing"
 )
 
-func TestJoinAnnouncement(t *testing.T) {
-	if got := joinAnnouncement(&telegramUser{FirstName: "Иван\n", LastName: "Иванов"}); got != "👋 Иван Иванов скоро зайдёт в TeamSpeak!" {
+func TestAnnouncements(t *testing.T) {
+	user := &telegramUser{FirstName: "Иван\n", LastName: "Иванов"}
+	for button, want := range map[string]string{
+		joinButton:  "👋 Иван Иванов скоро зайдёт в TeamSpeak!",
+		laterButton: "⏰ Иван Иванов зайдёт попозже.",
+		cantButton:  "😔 Иван Иванов: нихуя не получится.",
+	} {
+		if got, ok := announcement(button, user); !ok || got != want {
+			t.Errorf("%s: %q, %v", button, got, ok)
+		}
+	}
+	if got, ok := announcement(joinButton, nil); !ok || !strings.Contains(got, "Пользователь") {
 		t.Fatal(got)
 	}
-	if got := joinAnnouncement(nil); !strings.Contains(got, "Пользователь") {
-		t.Fatal(got)
+	if _, ok := announcement("обычный текст", user); ok {
+		t.Fatal("обычный текст принят за кнопку")
 	}
 }
 
@@ -31,7 +41,7 @@ func TestSendIncludesSilentJoinKeyboard(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatal(err)
 		}
-		if payload.ChatID != 42 || !payload.Silent || len(payload.Markup.Keyboard) != 1 || len(payload.Markup.Keyboard[0]) != 1 || payload.Markup.Keyboard[0][0].Text != joinButton {
+		if payload.ChatID != 42 || !payload.Silent || len(payload.Markup.Keyboard) != 3 || len(payload.Markup.Keyboard[0]) != 1 || len(payload.Markup.Keyboard[1]) != 1 || len(payload.Markup.Keyboard[2]) != 1 || payload.Markup.Keyboard[0][0].Text != joinButton || payload.Markup.Keyboard[1][0].Text != laterButton || payload.Markup.Keyboard[2][0].Text != cantButton {
 			t.Fatalf("unexpected payload: %+v", payload)
 		}
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`)), Header: make(http.Header)}, nil

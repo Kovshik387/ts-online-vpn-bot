@@ -248,7 +248,11 @@ func (t telegram) call(method string, payload any, result any) error {
 }
 func (t telegram) send(chatID int64, message string) error {
 	for _, part := range chunks(message, 4000) {
-		keyboard := map[string]any{"keyboard": [][]map[string]string{{{"text": joinButton}}}, "resize_keyboard": true}
+		keyboard := map[string]any{"keyboard": [][]map[string]string{
+			{{"text": joinButton}},
+			{{"text": laterButton}},
+			{{"text": cantButton}},
+		}, "resize_keyboard": true}
 		if err := t.call("sendMessage", map[string]any{"chat_id": chatID, "text": part, "disable_notification": true, "reply_markup": keyboard}, nil); err != nil {
 			return err
 		}
@@ -256,7 +260,11 @@ func (t telegram) send(chatID int64, message string) error {
 	return nil
 }
 
-const joinButton = "👋 Сейчас зайду"
+const (
+	joinButton  = "👋 Сейчас зайду"
+	laterButton = "⏰ Попозже зайду"
+	cantButton  = "😔 Нихуя не получится"
+)
 
 type telegramUser struct {
 	FirstName string `json:"first_name"`
@@ -264,7 +272,10 @@ type telegramUser struct {
 	Username  string `json:"username"`
 }
 
-func joinAnnouncement(user *telegramUser) string {
+func announcement(button string, user *telegramUser) (string, bool) {
+	if button != joinButton && button != laterButton && button != cantButton {
+		return "", false
+	}
 	name := ""
 	if user != nil {
 		name = strings.TrimSpace(clean(user.FirstName) + " " + clean(user.LastName))
@@ -275,7 +286,14 @@ func joinAnnouncement(user *telegramUser) string {
 	if name == "" {
 		name = "Пользователь"
 	}
-	return "👋 " + name + " скоро зайдёт в TeamSpeak!"
+	switch button {
+	case joinButton:
+		return "👋 " + name + " скоро зайдёт в TeamSpeak!", true
+	case laterButton:
+		return "⏰ " + name + " зайдёт попозже.", true
+	default:
+		return "😔 " + name + ": нихуя не получится.", true
+	}
 }
 
 type update struct {
@@ -338,8 +356,8 @@ func main() {
 			if len(c.allowed) > 0 && !c.allowed[id] {
 				continue
 			}
-			if strings.TrimSpace(u.Message.Text) == joinButton {
-				if err := tg.send(id, joinAnnouncement(u.Message.From)); err != nil {
+			if message, ok := announcement(strings.TrimSpace(u.Message.Text), u.Message.From); ok {
+				if err := tg.send(id, message); err != nil {
 					log.Print(err)
 				}
 				continue
